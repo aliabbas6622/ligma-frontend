@@ -35,6 +35,7 @@ interface Props {
   client: OTClient;
   nodes: Map<string, CanvasNode>;
   role: Role;
+  activePageId: string;
   replayNodes?: Map<string, CanvasNode> | null;
   focusNodeId?: string | null;
   heatmap: HeatmapData;
@@ -214,7 +215,7 @@ function Minimap({ nodes, pan, zoom, setPan, areaRef }: {
   );
 }
 
-export default function Canvas({ client, nodes, role, replayNodes, focusNodeId, heatmap, showHeatmap }: Props) {
+export default function Canvas({ client, nodes, role, activePageId, replayNodes, focusNodeId, heatmap, showHeatmap }: Props) {
   // ── Camera ──────────────────────────────────────────────────────────
   const [pan, setPan]   = useState({ x: 40, y: 40 });
   const [zoom, setZoom] = useState(1);
@@ -236,7 +237,28 @@ export default function Canvas({ client, nodes, role, replayNodes, focusNodeId, 
   const connectRef = useRef<ConnectState | null>(null);
 
   const areaRef = useRef<HTMLDivElement>(null);
-  const displayNodes = replayNodes ?? nodes;
+  const sourceNodes = replayNodes ?? nodes;
+  const displayNodes = useMemo(() => {
+    const visible = new Map<string, CanvasNode>();
+    for (const node of sourceNodes.values()) {
+      const nodePageId = node.pageId ?? 'page-1';
+      if (node.kind !== 'edge' && nodePageId === activePageId) {
+        visible.set(node.id, node);
+      }
+    }
+
+    for (const node of sourceNodes.values()) {
+      const edgePageId = node.pageId ?? 'page-1';
+      if (
+        node.kind === 'edge' &&
+        (edgePageId === activePageId || (visible.has(node.srcId ?? '') && visible.has(node.dstId ?? '')))
+      ) {
+        visible.set(node.id, node);
+      }
+    }
+
+    return visible;
+  }, [activePageId, sourceNodes]);
 
   // ── Sync cursors ────────────────────────────────────────────────────
   useEffect(() => client.onAwareness((s) => setCursors(new Map(s))), [client]);
@@ -422,11 +444,12 @@ export default function Canvas({ client, nodes, role, replayNodes, focusNodeId, 
       w: 200, h: 120,
       color,
       text: '',
+      pageId: activePageId,
       createdAt: Date.now(),
     });
     setSelected(node.id);
     setTool('select');
-  }, [tool, role, client, color, pan, zoom, screenCoords, screenToWorld]);
+  }, [tool, role, client, color, activePageId, pan, screenCoords, screenToWorld]);
 
   // ── Node pointer down ───────────────────────────────────────────────
   const handleNodeDown = useCallback((e: React.PointerEvent, nodeId: string) => {
@@ -452,6 +475,7 @@ export default function Canvas({ client, nodes, role, replayNodes, focusNodeId, 
             x: 0, y: 0, w: 0, h: 0,
             color: color,
             text: '',
+            pageId: activePageId,
           });
         }
         connectRef.current = null;
@@ -467,7 +491,7 @@ export default function Canvas({ client, nodes, role, replayNodes, focusNodeId, 
 
     dragRef.current = { nodeId, ox: world.x - node.x, oy: world.y - node.y };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [displayNodes, role, client, color, tool, screenCoords, screenToWorld]);
+  }, [displayNodes, role, client, color, activePageId, tool, screenCoords, screenToWorld]);
 
   // ── Pointer move ────────────────────────────────────────────────────
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
@@ -523,12 +547,13 @@ export default function Canvas({ client, nodes, role, replayNodes, focusNodeId, 
         w: Math.max(20, maxX - minX),
         h: Math.max(20, maxY - minY),
         color, text: '',
+        pageId: activePageId,
         points: pts,
       });
       setTool('select');
     }
     drawRef.current = null;
-  }, [client, color]);
+  }, [client, color, activePageId]);
 
   // ── Resize start ────────────────────────────────────────────────────
   const handleResizeStart = useCallback((e: React.PointerEvent, nodeId: string) => {
@@ -583,45 +608,6 @@ export default function Canvas({ client, nodes, role, replayNodes, focusNodeId, 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', background: 'var(--bg)' }}>
-
-      {/* ── Toolbar strip ── */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 4,
-        padding: '6px 14px', borderBottom: '1px solid var(--border)',
-        background: 'var(--surface)', flexShrink: 0, flexWrap: 'wrap',
-      }}>
-        {toolDefs.map(({ id, icon, label }) => (
-          <button key={id} title={label}
-            className={`tool-btn${tool === id ? ' active' : ''}`}
-            onClick={() => { setTool(id); connectRef.current = null; }}
-          >{icon}</button>
-        ))}
-
-        <div style={{ width: 1, height: 24, background: 'var(--border)', margin: '0 6px' }} />
-
-        {PALETTE.map((c) => (
-          <button key={c} onClick={() => setColor(c)} style={{
-            width: 20, height: 20, borderRadius: '50%', background: c, border: 'none',
-            outline: color === c ? '2.5px solid var(--text)' : '2.5px solid transparent',
-            cursor: 'pointer', flexShrink: 0,
-          }} />
-        ))}
-
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-          {connectRef.current && (
-            <span className="connection-hint" style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>
-              <Link size={13} />
-              🔗 Click destination node…
-            </span>
-          )}
-          <span style={{ fontSize: 11, color: 'var(--text-sub)' }}>
-            {zoom !== 1 ? `${Math.round(zoom * 100)}%` : ''} {displayNodes.size} obj
-          </span>
-          <button className="tool-btn" title="Fit to screen" onClick={handleFitToScreen}>
-            <Home size={16} />
-          </button>
-        </div>
-      </div>
 
       {/* ── Canvas ── */}
       <div ref={areaRef} style={{ flex: 1, position: 'relative', overflow: 'hidden',
@@ -691,6 +677,48 @@ export default function Canvas({ client, nodes, role, replayNodes, focusNodeId, 
         
         {/* Minimap */}
         <Minimap nodes={displayNodes} pan={pan} zoom={zoom} setPan={setPan} areaRef={areaRef} />
+
+        <div className="tool-dock" aria-label="Canvas tools">
+          <div className="dock-tools">
+            {toolDefs.map(({ id, icon, label }) => (
+              <button
+                key={id}
+                title={label}
+                className={`tool-btn dock-btn${tool === id ? ' active' : ''}`}
+                onClick={() => { setTool(id); connectRef.current = null; }}
+              >
+                {icon}
+              </button>
+            ))}
+          </div>
+          <div className="dock-divider" />
+          <div className="dock-colors" aria-label="Node colour">
+            {PALETTE.map((c) => (
+              <button
+                key={c}
+                aria-label={`Use colour ${c}`}
+                title={`Colour ${c}`}
+                className={`dock-swatch${color === c ? ' active' : ''}`}
+                onClick={() => setColor(c)}
+                style={{ background: c }}
+              />
+            ))}
+          </div>
+          <div className="dock-divider" />
+          <button className="tool-btn dock-btn" title="Fit to screen" onClick={handleFitToScreen}>
+            <Home size={16} />
+          </button>
+          <div className="dock-meta">
+            {zoom !== 1 ? `${Math.round(zoom * 100)}%` : '100%'} - {displayNodes.size} obj
+          </div>
+        </div>
+
+        {connectRef.current && (
+          <div className="connection-toast">
+            <Link size={13} />
+            <span>Click destination node...</span>
+          </div>
+        )}
       </div>
 
       {/* Context menu */}

@@ -12,12 +12,14 @@ import {
   ArrowRight,
   Ban,
   Brain,
+  Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   CircleHelp,
   ClipboardCheck,
   ClipboardList,
+  Copy,
   Crown,
   Download,
   Eye,
@@ -26,6 +28,8 @@ import {
   Inbox,
   Link2,
   PencilLine,
+  Plus,
+  Share2,
   Sparkles,
   User,
   Users,
@@ -34,6 +38,8 @@ import {
 
 const SWATCHES = ['#5b6af7', '#e05050', '#31a76c', '#d4880a', '#2c8fd4', '#a855f7', '#ec4899'];
 const DEFAULT_SESSION = '00000000-0000-0000-0000-000000000001';
+const DEFAULT_PAGE_ID = 'page-1';
+const PAGE_STORAGE_KEY = `ligma.pages.${DEFAULT_SESSION}`;
 
 interface SummaryItem { text: string; author?: string; nodeId: string; timestamp: string }
 interface SummarySection { title: string; items: SummaryItem[] }
@@ -53,6 +59,30 @@ interface SessionSummary {
 }
 
 interface JoinInfo { name: string; role: Role; color: string; userId: string }
+interface CanvasPage { id: string; name: string; createdAt: number }
+
+function readInitialPageId(): string {
+  if (typeof window === 'undefined') return DEFAULT_PAGE_ID;
+  const page = new URLSearchParams(window.location.search).get('page')?.trim();
+  return page || DEFAULT_PAGE_ID;
+}
+
+function readStoredPages(activePageId: string): CanvasPage[] {
+  const fallback = [{ id: DEFAULT_PAGE_ID, name: 'Page 1', createdAt: 1 }];
+  if (typeof window === 'undefined') return fallback;
+
+  try {
+    const raw = window.localStorage.getItem(PAGE_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) as CanvasPage[] : fallback;
+    const pages = Array.isArray(parsed) && parsed.length ? parsed : fallback;
+    if (pages.some((page) => page.id === activePageId)) return pages;
+    return [...pages, { id: activePageId, name: 'Shared page', createdAt: Date.now() }];
+  } catch {
+    return activePageId === DEFAULT_PAGE_ID
+      ? fallback
+      : [...fallback, { id: activePageId, name: 'Shared page', createdAt: Date.now() }];
+  }
+}
 
 function toMarkdown(s: SessionSummary): string {
   const date = new Date(s.generatedAt).toLocaleString();
@@ -228,6 +258,88 @@ function SummaryModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+function ShareModal({
+  url,
+  pageName,
+  onClose,
+}: {
+  url: string;
+  pageName: string;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = url;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  };
+
+  const shareNative = async () => {
+    if (!navigator.share) {
+      await copyLink();
+      return;
+    }
+    try {
+      await navigator.share({
+        title: `LIGMA - ${pageName}`,
+        text: `Join this LIGMA workspace page: ${pageName}`,
+        url,
+      });
+    } catch {
+      // The native sheet was dismissed; keep the dialog open.
+    }
+  };
+
+  return (
+    <div className="overlay" onClick={onClose} style={{ zIndex: 2100 }}>
+      <div
+        className="dialog share-dialog"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="dialog-header-row">
+          <div>
+            <div className="dialog-logo dialog-title-row" style={{ fontSize: 24, margin: 0 }}>
+              <Share2 size={22} /> Share workspace
+            </div>
+            <div className="dialog-sub" style={{ marginBottom: 0 }}>Anyone with access to the app can open this page.</div>
+          </div>
+          <button onClick={onClose} className="icon-only-btn" aria-label="Close share dialog">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="share-url-box">
+          <Link2 size={16} />
+          <input className="share-url-input" value={url} readOnly onFocus={(e) => e.currentTarget.select()} />
+        </div>
+
+        <div className="share-actions">
+          <button className="btn-join share-secondary" onClick={copyLink}>
+            {copied ? <Check size={16} /> : <Copy size={16} />}
+            {copied ? 'Copied' : 'Copy link'}
+          </button>
+          <button className="btn-join" onClick={shareNative}>
+            <Share2 size={16} />
+            Share
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function JoinDialog({ onJoin }: { onJoin: (i: JoinInfo) => void }) {
   const [name, setName] = useState('');
   const [role, setRole] = useState<Role>('Contributor');
@@ -321,7 +433,47 @@ export default function App() {
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
+  const [showShare, setShowShare] = useState(false);
+  const [activePageId, setActivePageId] = useState(readInitialPageId);
+  const [pages, setPages] = useState<CanvasPage[]>(() => readStoredPages(readInitialPageId()));
   const denialTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    window.localStorage.setItem(PAGE_STORAGE_KEY, JSON.stringify(pages));
+  }, [pages]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (activePageId === DEFAULT_PAGE_ID) {
+      url.searchParams.delete('page');
+    } else {
+      url.searchParams.set('page', activePageId);
+    }
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+  }, [activePageId]);
+
+  const activePage = pages.find((page) => page.id === activePageId) ?? pages[0]!;
+  const shareUrl = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    const url = new URL(window.location.href);
+    if (activePageId === DEFAULT_PAGE_ID) {
+      url.searchParams.delete('page');
+    } else {
+      url.searchParams.set('page', activePageId);
+    }
+    return url.toString();
+  }, [activePageId]);
+
+  const addPage = useCallback(() => {
+    const nextIndex = pages.length + 1;
+    const page: CanvasPage = {
+      id: `page-${Date.now().toString(36)}`,
+      name: `Page ${nextIndex}`,
+      createdAt: Date.now(),
+    };
+    setPages((current) => [...current, page]);
+    setActivePageId(page.id);
+  }, [pages.length]);
 
   const heatmap: HeatmapData = useMemo(() => {
     const map = new Map<string, number>();
@@ -428,10 +580,33 @@ export default function App() {
         <span className="header-logo">LIGMA</span>
         <div className="header-divider" />
         <span className="header-session">Main Brainstorm</span>
+        <div className="page-switcher" aria-label="Workspace pages">
+          {pages.map((page) => (
+            <button
+              key={page.id}
+              className={`page-tab${activePageId === page.id ? ' active' : ''}`}
+              onClick={() => setActivePageId(page.id)}
+              title={page.name}
+            >
+              {page.name}
+            </button>
+          ))}
+          <button className="page-add-btn" onClick={addPage} title="Add page" aria-label="Add page">
+            <Plus size={15} />
+          </button>
+        </div>
         <div className="header-spacer" />
 
         <button
-          className="tool-btn"
+          className="tool-btn header-action"
+          title="Share workspace page"
+          onClick={() => setShowShare(true)}
+        >
+          <Share2 size={18} />
+        </button>
+
+        <button
+          className="tool-btn header-action"
           title="Export AI Session Brief"
           style={{ color: 'var(--accent)', fontWeight: 700 }}
           onClick={() => setShowSummary(true)}
@@ -440,7 +615,7 @@ export default function App() {
         </button>
 
         <button
-          className="tool-btn"
+          className="tool-btn header-action"
           title={showHeatmap ? 'Hide heatmap' : 'Show presence heatmap'}
           style={showHeatmap ? { background: 'rgba(249,115,22,.1)', color: '#f97316', borderColor: '#f97316' } : {}}
           onClick={() => setShowHeatmap((v) => !v)}
@@ -466,6 +641,7 @@ export default function App() {
           client={client}
           nodes={nodes}
           role={joinInfo.role}
+          activePageId={activePageId}
           replayNodes={replayNodes}
           focusNodeId={focusNodeId}
           heatmap={heatmap}
@@ -567,6 +743,7 @@ export default function App() {
 
       <ReplayBar events={events} replaySeq={replaySeq} onSeek={handleSeek} />
       {showSummary && <SummaryModal onClose={() => setShowSummary(false)} />}
+      {showShare && <ShareModal url={shareUrl} pageName={activePage.name} onClose={() => setShowShare(false)} />}
       {denial && <div className="denial-toast"><Ban size={16} /> {denial}</div>}
     </div>
   );

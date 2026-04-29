@@ -19,6 +19,7 @@ export interface CanvasNode {
   intent?: IntentType | null;
   intentConfidence?: number;
   intentSource?: 'keyword' | 'ai' | null;
+  pageId?: string;
   createdAt?: number;
   updatedAt?: number;
 }
