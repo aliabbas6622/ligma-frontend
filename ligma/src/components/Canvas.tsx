@@ -9,6 +9,7 @@ import {
   Pencil,
   Share2,
   Home,
+  Hand,
   Circle,
   Triangle,
   Hexagon,
@@ -16,7 +17,9 @@ import {
   ArrowRight,
   Link,
   Lock,
-  Trash2,
+  Maximize2,
+  Minus,
+  Plus,
   Unlock,
 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
@@ -84,6 +87,25 @@ function GhostEdge({ from, to }: { from: { x: number; y: number }; to: { x: numb
 }
 
 // ── Minimap ─────────────────────────────────────────────────────────────
+function DrawPreview({ points, color }: { points: Array<[number, number]>; color: string }) {
+  if (points.length < 2) return null;
+  const d = points.map(([x, y], index) => `${index === 0 ? 'M' : 'L'} ${x} ${y}`).join(' ');
+
+  return (
+    <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 3 }}>
+      <path
+        d={d}
+        fill="none"
+        stroke={color}
+        strokeWidth={3}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity={0.9}
+      />
+    </svg>
+  );
+}
+
 function Minimap({ nodes, pan, zoom, setPan, areaRef }: {
   nodes: Map<string, CanvasNode>;
   pan: { x: number; y: number };
@@ -227,6 +249,8 @@ export default function Canvas({ client, nodes, role, activePageId, replayNodes,
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [cursors, setCursors] = useState(new Map<string, any>());
   const [ghostMouse, setGhostMouse] = useState({ x: 0, y: 0 });
+  const [drawingPoints, setDrawingPoints] = useState<Array<[number, number]>>([]);
+  const [isPanning, setIsPanning] = useState(false);
 
   // ── Drag refs ───────────────────────────────────────────────────────
   const dragRef   = useRef<{ nodeId: string; ox: number; oy: number } | null>(null);
@@ -414,6 +438,7 @@ export default function Canvas({ client, nodes, role, activePageId, replayNodes,
     // Middle button or space → pan
     if (e.button === 1 || spaceRef.current) {
       panRef.current = { sx, sy, px: pan.x, py: pan.y };
+      setIsPanning(true);
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
       return;
     }
@@ -421,12 +446,19 @@ export default function Canvas({ client, nodes, role, activePageId, replayNodes,
     // Draw tool
     if (tool === 'draw') {
       drawRef.current = { pts: [[world.x, world.y]] };
+      setDrawingPoints([[world.x, world.y]]);
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
       return;
     }
 
     // Select → deselect
-    if (tool === 'select') { setSelected(null); return; }
+    if (tool === 'select') {
+      setSelected(null);
+      panRef.current = { sx, sy, px: pan.x, py: pan.y };
+      setIsPanning(true);
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      return;
+    }
 
     // Connect tool — started from canvas = cancel
     if (tool === 'connect') { connectRef.current = null; return; }
@@ -508,7 +540,7 @@ export default function Canvas({ client, nodes, role, activePageId, replayNodes,
 
     if (drawRef.current) {
       drawRef.current.pts.push([world.x, world.y]);
-      // Force re-render by creating a new array ref? We'll update on pointerUp.
+      setDrawingPoints([...drawRef.current.pts]);
       return;
     }
 
@@ -532,6 +564,7 @@ export default function Canvas({ client, nodes, role, activePageId, replayNodes,
   // ── Pointer up ──────────────────────────────────────────────────────
   const handlePointerUp = useCallback((_e: React.PointerEvent) => {
     panRef.current = null;
+    setIsPanning(false);
     dragRef.current = null;
     resizeRef.current = null;
 
@@ -553,6 +586,7 @@ export default function Canvas({ client, nodes, role, activePageId, replayNodes,
       setTool('select');
     }
     drawRef.current = null;
+    setDrawingPoints([]);
   }, [client, color, activePageId]);
 
   // ── Resize start ────────────────────────────────────────────────────
@@ -605,6 +639,7 @@ export default function Canvas({ client, nodes, role, activePageId, replayNodes,
   ];
 
   const isReadonly = !!replayNodes;
+  const activeTool = toolDefs.find((item) => item.id === tool) ?? toolDefs[0]!;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', background: 'var(--bg)' }}>
@@ -615,7 +650,7 @@ export default function Canvas({ client, nodes, role, activePageId, replayNodes,
         backgroundImage: 'radial-gradient(circle, var(--border) 1.2px, transparent 1.2px)',
         backgroundSize: `${24 * zoom}px ${24 * zoom}px`,
         backgroundPosition: `${pan.x}px ${pan.y}px`,
-        cursor: spaceRef.current ? 'grab' : tool === 'draw' ? 'crosshair' : tool === 'connect' ? 'cell' : 'default',
+        cursor: isPanning ? 'grabbing' : spaceRef.current || tool === 'select' ? 'grab' : tool === 'draw' ? 'crosshair' : tool === 'connect' ? 'cell' : 'crosshair',
       }}
         onPointerDown={handleCanvasDown}
         onPointerMove={handlePointerMove}
@@ -628,6 +663,8 @@ export default function Canvas({ client, nodes, role, activePageId, replayNodes,
 
           {/* Edges */}
           <EdgeLayer nodes={displayNodes} />
+
+          <DrawPreview points={drawingPoints} color={color} />
 
           {/* Nodes */}
           <AnimatePresence>
@@ -678,7 +715,30 @@ export default function Canvas({ client, nodes, role, activePageId, replayNodes,
         {/* Minimap */}
         <Minimap nodes={displayNodes} pan={pan} zoom={zoom} setPan={setPan} areaRef={areaRef} />
 
-        <div className="tool-dock" aria-label="Canvas tools">
+        <div className="canvas-command-strip" onPointerDown={(e) => e.stopPropagation()}>
+          <div className="command-pill strong">
+            {activeTool.icon}
+            <span>{activeTool.label.replace(/\s*\(.+\)$/, '')}</span>
+          </div>
+          <div className="command-pill">
+            <Hand size={14} />
+            <span>Drag canvas</span>
+          </div>
+          <div className="command-controls" aria-label="Canvas zoom controls">
+            <button className="mini-tool-btn" title="Zoom out" onClick={() => doZoomCentered(0.9)}>
+              <Minus size={14} />
+            </button>
+            <span>{Math.round(zoom * 100)}%</span>
+            <button className="mini-tool-btn" title="Zoom in" onClick={() => doZoomCentered(1.1)}>
+              <Plus size={14} />
+            </button>
+            <button className="mini-tool-btn" title="Fit to screen" onClick={handleFitToScreen}>
+              <Maximize2 size={14} />
+            </button>
+          </div>
+        </div>
+
+        <div className="tool-dock" aria-label="Canvas tools" onPointerDown={(e) => e.stopPropagation()}>
           <div className="dock-tools">
             {toolDefs.map(({ id, icon, label }) => (
               <button
