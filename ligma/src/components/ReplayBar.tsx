@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, X, Rewind, History } from 'lucide-react';
+import { Play, X, History } from 'lucide-react';
 import type { EventRow } from '../state/types';
 
 interface Props {

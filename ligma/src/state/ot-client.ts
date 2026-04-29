@@ -67,8 +67,15 @@ export class OTClient {
   connect(): void {
     if (this.ws && this.ws.readyState < 2) return; // already open or connecting
 
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const url = `${proto}://${location.host}/ws?session=${this.sessionId}`;
+    const apiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
+    const apiOrigin = apiUrl
+      ? /^https?:\/\//i.test(apiUrl)
+        ? apiUrl.replace(/\/$/, '')
+        : /^(localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d+)?$/i.test(apiUrl)
+          ? `http://${apiUrl.replace(/\/$/, '')}`
+          : `https://${apiUrl.replace(/\/$/, '')}`
+      : `${location.protocol}//${location.host}`;
+    const url = `${apiOrigin.replace(/^http/, 'ws')}/ws?session=${this.sessionId}`;
 
     this.emitStatus('connecting');
     const ws = new WebSocket(url);

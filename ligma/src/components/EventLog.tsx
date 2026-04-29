@@ -1,4 +1,5 @@
 import React from 'react';
+import { ClipboardList } from 'lucide-react';
 import type { EventRow } from '../state/types';
 
 function dotClass(type: string): string {
@@ -23,11 +24,12 @@ export default function EventLog({ events }: { events: EventRow[] }) {
   if (!events.length) {
     return (
       <div className="empty-state">
-        <div className="empty-icon">📋</div>
+        <ClipboardList className="empty-icon-svg" />
         No events yet. Start collaborating!
       </div>
     );
   }
+
   return (
     <div className="event-list">
       {[...events].reverse().map((ev) => (
@@ -36,7 +38,7 @@ export default function EventLog({ events }: { events: EventRow[] }) {
           <div className="event-body">
             <div className="event-type">{label(ev.event_type)}</div>
             {ev.node_id && (
-              <div className="event-time">{ev.node_id.slice(0, 8)}…</div>
+              <div className="event-time">{ev.node_id.slice(0, 8)}...</div>
             )}
           </div>
           <div className="event-seq">#{ev.seq_num}</div>

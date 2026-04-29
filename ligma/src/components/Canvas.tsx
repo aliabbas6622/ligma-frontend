@@ -1,5 +1,4 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-import { v4 as uuidv4 } from 'uuid';
 import type { CanvasNode, Role, HeatmapData } from '../state/types';
 import type { OTClient } from '../state/ot-client';
 import {
@@ -10,18 +9,23 @@ import {
   Pencil,
   Share2,
   Home,
-  Trash2,
+  Circle,
+  Triangle,
+  Hexagon,
+  Star,
+  ArrowRight,
+  Link,
   Lock,
+  Trash2,
   Unlock,
-  Plus
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import NodeView from './NodeView';
 import Cursors from './Cursors';
 import HeatmapOverlay from './HeatmapOverlay';
 
 const PALETTE = ['#5b6af7','#e05050','#31a76c','#d4880a','#2c8fd4','#a855f7','#ec4899','#0f766e'];
-export type Tool = 'select' | 'sticky' | 'rect' | 'text' | 'draw' | 'connect';
+export type Tool = 'select' | 'sticky' | 'rect' | 'circle' | 'diamond' | 'triangle' | 'hexagon' | 'star' | 'arrow' | 'text' | 'draw' | 'connect';
 
 interface CtxMenu { sx: number; sy: number; nodeId: string }
 interface ConnectState { fromId: string }
@@ -84,7 +88,7 @@ function Minimap({ nodes, pan, zoom, setPan, areaRef }: {
   pan: { x: number; y: number };
   zoom: number;
   setPan: (p: { x: number; y: number }) => void;
-  areaRef: React.RefObject<HTMLDivElement>;
+  areaRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const mapWidth = 160;
@@ -407,8 +411,13 @@ export default function Canvas({ client, nodes, role, replayNodes, focusNodeId, 
 
     // Add node
     if (role === 'Viewer') return;
+    const toolToKind: Record<string, CanvasNode['kind']> = {
+      sticky: 'sticky', rect: 'rect', text: 'text', draw: 'draw',
+      circle: 'circle', diamond: 'diamond', triangle: 'triangle',
+      hexagon: 'hexagon', star: 'star', arrow: 'arrow',
+    };
     const node = client.addNode({
-      kind: tool === 'sticky' ? 'sticky' : tool === 'rect' ? 'rect' : 'text',
+      kind: toolToKind[tool] ?? 'rect',
       x: world.x - 100, y: world.y - 60,
       w: 200, h: 120,
       color,
@@ -436,7 +445,6 @@ export default function Canvas({ client, nodes, role, replayNodes, focusNodeId, 
         setSelected(nodeId);
       } else {
         if (connectRef.current.fromId !== nodeId && role !== 'Viewer') {
-          const src = displayNodes.get(connectRef.current.fromId);
           client.addNode({
             kind: 'edge',
             srcId: connectRef.current.fromId,
@@ -498,7 +506,7 @@ export default function Canvas({ client, nodes, role, replayNodes, focusNodeId, 
   }, [client, screenCoords, screenToWorld]);
 
   // ── Pointer up ──────────────────────────────────────────────────────
-  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+  const handlePointerUp = useCallback((_e: React.PointerEvent) => {
     panRef.current = null;
     dragRef.current = null;
     resizeRef.current = null;
@@ -560,8 +568,14 @@ export default function Canvas({ client, nodes, role, replayNodes, focusNodeId, 
     { id: 'select',  icon: <MousePointer2 size={16} />,  label: 'Select (V)' },
     { id: 'sticky',  icon: <StickyNote size={16} />,    label: 'Sticky (S)' },
     { id: 'rect',    icon: <Square size={16} />,        label: 'Rectangle (R)' },
+    { id: 'circle',  icon: <Circle size={16} />,        label: 'Circle (O)' },
+    { id: 'diamond', icon: <Square size={16} style={{ transform: 'rotate(45deg)' }} />, label: 'Diamond' },
+    { id: 'triangle', icon: <Triangle size={16} />,      label: 'Triangle' },
+    { id: 'hexagon',  icon: <Hexagon size={16} />,       label: 'Hexagon' },
+    { id: 'star',    icon: <Star size={16} />,         label: 'Star' },
+    { id: 'arrow',   icon: <ArrowRight size={16} />,    label: 'Arrow' },
     { id: 'text',    icon: <Type size={16} />,          label: 'Text (T)' },
-    { id: 'draw',    icon: <Pencil size={16} />,        label: 'Draw (D)' },
+    { id: 'draw',    icon: <Pencil size={16} />,        label: 'Draw (F)' },
     { id: 'connect', icon: <Share2 size={16} />,        label: 'Connect (C)' },
   ];
 
@@ -595,7 +609,8 @@ export default function Canvas({ client, nodes, role, replayNodes, focusNodeId, 
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
           {connectRef.current && (
-            <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>
+            <span className="connection-hint" style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>
+              <Link size={13} />
               🔗 Click destination node…
             </span>
           )}
@@ -669,7 +684,7 @@ export default function Canvas({ client, nodes, role, replayNodes, focusNodeId, 
 
         {/* Replay label */}
         {isReadonly && (
-          <div style={{ position: 'absolute', top: 10, left: 10, background: 'var(--warn)', color: '#fff', padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
+          <div className="replay-mode-badge" style={{ position: 'absolute', top: 10, left: 10, background: 'var(--warn)', color: '#fff', padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
             ⏱ Replay mode — read only
           </div>
         )}
@@ -685,15 +700,18 @@ export default function Canvas({ client, nodes, role, replayNodes, focusNodeId, 
           {role === 'Lead' && (
             <>
               {ctxNode.lockedToRole ? (
-                <div className="ctx-item" onClick={() => { client.lockNode(ctxMenu.nodeId, null); setCtxMenu(null); }}>
+                <div className="ctx-item generated-label" data-label="Unlock node" onClick={() => { client.lockNode(ctxMenu.nodeId, null); setCtxMenu(null); }}>
+                  <Unlock size={14} />
                   🔓 Unlock node
                 </div>
               ) : (
                 <>
-                  <div className="ctx-item" onClick={() => { client.lockNode(ctxMenu.nodeId, 'Lead'); setCtxMenu(null); }}>
+                  <div className="ctx-item generated-label" data-label="Lock to Lead only" onClick={() => { client.lockNode(ctxMenu.nodeId, 'Lead'); setCtxMenu(null); }}>
+                    <Lock size={14} />
                     🔒 Lock to Lead only
                   </div>
-                  <div className="ctx-item" onClick={() => { client.lockNode(ctxMenu.nodeId, 'Contributor'); setCtxMenu(null); }}>
+                  <div className="ctx-item generated-label" data-label="Lock to Contributor+" onClick={() => { client.lockNode(ctxMenu.nodeId, 'Contributor'); setCtxMenu(null); }}>
+                    <Lock size={14} />
                     🔒 Lock to Contributor+
                   </div>
                 </>
@@ -701,12 +719,12 @@ export default function Canvas({ client, nodes, role, replayNodes, focusNodeId, 
               <div className="ctx-sep" />
             </>
           )}
-          <div className="ctx-item" onClick={() => {
+          <div className="ctx-item generated-label" data-label="Connect to..." onClick={() => {
             setTool('connect'); connectRef.current = { fromId: ctxMenu.nodeId }; setCtxMenu(null);
           }}>↔ Connect to…</div>
           <div className="ctx-sep" />
           {role !== 'Viewer' && (
-            <div className="ctx-item danger" onClick={() => {
+            <div className="ctx-item danger generated-label" data-label="Delete" onClick={() => {
               client.deleteNode(ctxMenu.nodeId); setCtxMenu(null); setSelected(null);
             }}>🗑 Delete</div>
           )}

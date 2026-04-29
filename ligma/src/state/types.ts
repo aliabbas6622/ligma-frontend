@@ -1,6 +1,6 @@
 export type Role = 'Lead' | 'Contributor' | 'Viewer';
 export type IntentType = 'action_item' | 'decision' | 'open_question' | 'reference';
-export type NodeKind = 'sticky' | 'rect' | 'text' | 'draw' | 'edge';
+export type NodeKind = 'sticky' | 'rect' | 'text' | 'draw' | 'edge' | 'circle' | 'diamond' | 'triangle' | 'hexagon' | 'star' | 'arrow';
 
 export interface CanvasNode {
   id: string;

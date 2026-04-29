@@ -31,6 +31,7 @@
   
   --glass: rgba(255, 255, 255, 0.8);
   --glass-border: rgba(15, 23, 42, 0.08);
+  --sidebar-width: 288px;
 }
 
 html,
@@ -226,7 +227,7 @@ body,
 
 /* ── Sidebar (right) ─────────────────────────────────────────────── */
 .sidebar {
-  width: 288px;
+  width: var(--sidebar-width);
   height: 100%;
   flex-shrink: 0;
   background: var(--surface);
@@ -235,6 +236,14 @@ body,
   flex-direction: column;
   overflow: hidden;
   z-index: 50;
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease, border-color 0.18s ease;
+}
+
+.sidebar.collapsed {
+  width: 0;
+  opacity: 0;
+  border-left-color: transparent;
+  pointer-events: none;
 }
 
 .sidebar-tabs {
@@ -244,6 +253,10 @@ body,
 }
 
 .sidebar-toggle {
+  position: absolute;
+  right: calc(var(--sidebar-width) - 12px);
+  top: 64px;
+  z-index: 100;
   background: var(--surface2);
   border: 1px solid var(--border);
   color: var(--text-dim);
@@ -255,6 +268,11 @@ body,
   justify-content: center;
   cursor: pointer;
   box-shadow: var(--shadow-sm);
+  transition: right 0.25s cubic-bezier(0.4, 0, 0.2, 1), background 0.14s, color 0.14s;
+}
+
+.sidebar-toggle.collapsed {
+  right: 12px;
 }
 
 .sidebar-toggle:hover {
@@ -299,6 +317,9 @@ body,
 }
 
 .sidebar-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
@@ -543,6 +564,9 @@ body,
   box-shadow: var(--shadow-lg);
   animation: slide-up 0.18s ease, fade-out 0.4s 2.6s ease forwards;
   pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* ── Tasks ────────────────────────────────────────────────────────── */
@@ -605,6 +629,9 @@ body,
   color: var(--accent);
   padding: 1px 6px;
   border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* ── Event log ────────────────────────────────────────────────────── */
@@ -829,6 +856,21 @@ body,
   transition: background 0.12s;
 }
 
+.ctx-item.generated-label {
+  font-size: 0;
+}
+
+.ctx-item.generated-label svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.ctx-item.generated-label::after {
+  content: attr(data-label);
+  font-size: 13px;
+}
+
 .ctx-item:hover {
   background: var(--surface2);
 }
@@ -877,6 +919,30 @@ body,
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   margin-bottom: 4px;
+}
+
+.dialog-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon-only-btn {
+  background: none;
+  border: none;
+  color: var(--text-sub);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+}
+
+.icon-only-btn:hover {
+  background: var(--surface2);
+  color: var(--text);
 }
 
 .dialog-sub {
@@ -957,6 +1023,10 @@ body,
   font-size: 13px;
   font-weight: 500;
   transition: all 0.13s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 .role-opt:hover {
@@ -984,6 +1054,10 @@ body,
   margin-top: 8px;
   transition: opacity 0.15s;
   box-shadow: 0 4px 16px rgba(91, 106, 247, 0.28);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .btn-join:hover {
@@ -1001,6 +1075,63 @@ body,
 .empty-icon {
   font-size: 28px;
   margin-bottom: 10px;
+}
+
+.empty-icon-svg {
+  width: 30px;
+  height: 30px;
+  margin: 0 auto 10px;
+  color: var(--text-sub);
+}
+
+.connection-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0 !important;
+}
+
+.connection-hint::after {
+  content: "Click destination node...";
+  font-size: 12px;
+}
+
+.replay-mode-badge {
+  font-size: 0 !important;
+}
+
+.replay-mode-badge::after {
+  content: "Replay mode - read only";
+  font-size: 12px;
+}
+
+@media (max-width: 1280px) {
+  :root {
+    --sidebar-width: 260px;
+  }
+
+  .header {
+    gap: 8px;
+    padding: 0 10px;
+  }
+
+  .header-session {
+    display: none;
+  }
+
+  .toolbar {
+    width: 44px;
+    padding-inline: 4px;
+  }
+
+  .tool-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .sidebar-body {
+    padding: 12px 10px;
+  }
 }
 
 /* ── Animations ───────────────────────────────────────────────────── */

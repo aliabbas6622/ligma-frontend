@@ -8,44 +8,63 @@ import TaskBoard from './components/TaskBoard';
 import EventLog from './components/EventLog';
 import ReplayBar from './components/ReplayBar';
 import {
+  Activity,
+  ArrowRight,
+  Ban,
   Brain,
-  ClipboardList,
-  Users,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Flame,
+  CircleHelp,
+  ClipboardCheck,
+  ClipboardList,
+  Crown,
+  Download,
+  Eye,
   FileText,
-  Activity,
-  History,
-  Lock,
-  Settings,
-  X
+  Flame,
+  Inbox,
+  Link2,
+  PencilLine,
+  Sparkles,
+  User,
+  Users,
+  X,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
 
-const SWATCHES = ['#5b6af7','#e05050','#31a76c','#d4880a','#2c8fd4','#a855f7','#ec4899'];
+const SWATCHES = ['#5b6af7', '#e05050', '#31a76c', '#d4880a', '#2c8fd4', '#a855f7', '#ec4899'];
 const DEFAULT_SESSION = '00000000-0000-0000-0000-000000000001';
 
-// ── Summary modal ────────────────────────────────────────────────────────────
 interface SummaryItem { text: string; author?: string; nodeId: string; timestamp: string }
 interface SummarySection { title: string; items: SummaryItem[] }
 interface SessionSummary {
-  sessionName: string; generatedAt: string; totalNodes: number; totalEvents: number;
-  sections: { decisions: SummarySection; action_items: SummarySection; open_questions: SummarySection; references: SummarySection };
-  aiNarrative: string | null; source: 'ai' | 'structured';
+  sessionName: string;
+  generatedAt: string;
+  totalNodes: number;
+  totalEvents: number;
+  sections: {
+    decisions: SummarySection;
+    action_items: SummarySection;
+    open_questions: SummarySection;
+    references: SummarySection;
+  };
+  aiNarrative: string | null;
+  source: 'ai' | 'structured';
 }
+
+interface JoinInfo { name: string; role: Role; color: string; userId: string }
 
 function toMarkdown(s: SessionSummary): string {
   const date = new Date(s.generatedAt).toLocaleString();
   const lines: string[] = [
-    `# LIGMA Session Brief — ${s.sessionName}`,
-    `_Generated ${date} · ${s.totalEvents} events · ${s.source === 'ai' ? 'Gemini 2.0 Flash' : 'structured'}_`,
+    `# LIGMA Session Brief - ${s.sessionName}`,
+    `_Generated ${date} - ${s.totalEvents} events - ${s.source === 'ai' ? 'Gemini 2.0 Flash' : 'structured'}_`,
     '',
   ];
-  if (s.aiNarrative) {
-    lines.push('## Executive Summary', '', s.aiNarrative, '');
-  }
-  for (const [key, sec] of Object.entries(s.sections) as [string, SummarySection][]) {
+
+  if (s.aiNarrative) lines.push('## Executive Summary', '', s.aiNarrative, '');
+
+  for (const [, sec] of Object.entries(s.sections) as [string, SummarySection][]) {
     if (!sec.items.length) continue;
     lines.push(`## ${sec.title}`, '');
     for (const item of sec.items) {
@@ -63,9 +82,47 @@ function SummaryModal({ onClose }: { onClose: () => void }) {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    api.summary.get(DEFAULT_SESSION)
-      .then((s) => { setSummary(s); setLoading(false); })
-      .catch(() => { setErr('Failed to generate summary'); setLoading(false); });
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const next = await api.summary.get(DEFAULT_SESSION) as SessionSummary;
+        if (!cancelled) {
+          setSummary(next);
+          setLoading(false);
+        }
+        return;
+      } catch (primaryError) {
+        if (
+          typeof window !== 'undefined' &&
+          /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)
+        ) {
+          try {
+            const res = await fetch(`http://127.0.0.1:18083/api/summary/${DEFAULT_SESSION}`);
+            if (!res.ok) throw new Error(`summary fallback failed: ${res.status}`);
+            const next = await res.json() as SessionSummary;
+            if (!cancelled) {
+              setSummary(next);
+              setLoading(false);
+            }
+            return;
+          } catch {
+            // Fall through to the generic UI error below.
+          }
+        }
+
+        if (!cancelled) {
+          console.error('Summary request failed', primaryError);
+          setErr('Failed to generate summary');
+          setLoading(false);
+        }
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const download = () => {
@@ -74,29 +131,38 @@ function SummaryModal({ onClose }: { onClose: () => void }) {
     const blob = new Blob([md], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `ligma-brief-${Date.now()}.md`; a.click();
+    a.href = url;
+    a.download = `ligma-brief-${Date.now()}.md`;
+    a.click();
     URL.revokeObjectURL(url);
   };
 
   return (
     <div className="overlay" onClick={onClose} style={{ zIndex: 2000 }}>
-      <div className="dialog" style={{ width: 'min(560px, 95vw)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', animation: 'pop-in .2s ease' }}
-        onClick={(e) => e.stopPropagation()}>
+      <div
+        className="dialog"
+        style={{ width: 'min(560px, 95vw)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', animation: 'pop-in .2s ease' }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-          <div className="dialog-logo" style={{ fontSize: 22, margin: 0 }}>📄 Session Brief</div>
+          <div className="dialog-logo dialog-title-row" style={{ fontSize: 22, margin: 0 }}>
+            <FileText size={22} /> Session Brief
+          </div>
           <div style={{ flex: 1 }} />
           {summary && (
             <button className="btn-join" style={{ width: 'auto', padding: '8px 16px', marginTop: 0, fontSize: 13 }} onClick={download}>
-              ⬇ Download .md
+              <Download size={14} /> Download .md
             </button>
           )}
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text-sub)' }}>✕</button>
+          <button onClick={onClose} className="icon-only-btn" aria-label="Close summary">
+            <X size={18} />
+          </button>
         </div>
 
         {loading && (
           <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-sub)' }}>
-            <div style={{ fontSize: 32, marginBottom: 12, animation: 'pulse 1s infinite' }}>✦</div>
-            Gemini 2.0 Flash is generating your brief…
+            <Sparkles size={32} style={{ marginBottom: 12, animation: 'pulse 1s infinite', color: 'var(--accent)' }} />
+            <div>Gemini 2.0 Flash is generating your brief...</div>
           </div>
         )}
         {err && <div style={{ color: 'var(--danger)', textAlign: 'center', padding: 24 }}>{err}</div>}
@@ -104,33 +170,33 @@ function SummaryModal({ onClose }: { onClose: () => void }) {
         {summary && (
           <div style={{ overflowY: 'auto', flex: 1 }}>
             <div style={{ fontSize: 11, color: 'var(--text-sub)', marginBottom: 14 }}>
-              {new Date(summary.generatedAt).toLocaleString()} · {summary.totalEvents} events ·
+              {new Date(summary.generatedAt).toLocaleString()} - {summary.totalEvents} events -
               <span style={{ marginLeft: 4, color: summary.source === 'ai' ? 'var(--accent)' : 'var(--text-sub)', fontWeight: 600 }}>
-                {summary.source === 'ai' ? '✦ Gemini 2.0 Flash' : 'Structured (no API key)'}
+                {summary.source === 'ai' ? 'Gemini-2.0- Flash' : 'Structured fallback'}
               </span>
             </div>
 
             {summary.aiNarrative && (
               <div style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-bg2)', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
-                  ✦ Executive Summary
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Sparkles size={12} /> Executive Summary
                 </div>
                 <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text)' }}>{summary.aiNarrative}</div>
               </div>
             )}
 
             {([
-              ['decisions',      '✅', '#1f9060'],
-              ['action_items',   '📋', '#c94040'],
-              ['open_questions', '❓', '#a86800'],
-              ['references',     '📎', '#1a6fa8'],
-            ] as [keyof typeof summary.sections, string, string][]).map(([key, icon, color]) => {
+              ['decisions', CheckCircle2, '#1f9060'],
+              ['action_items', ClipboardCheck, '#c94040'],
+              ['open_questions', CircleHelp, '#a86800'],
+              ['references', Link2, '#1a6fa8'],
+            ] as [keyof typeof summary.sections, typeof CheckCircle2, string][]).map(([key, Icon, color]) => {
               const sec = summary.sections[key];
               if (!sec.items.length) return null;
               return (
                 <div key={key} style={{ marginBottom: 18 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {icon} {sec.title} <span style={{ fontWeight: 400, color: 'var(--text-sub)' }}>({sec.items.length})</span>
+                    <Icon size={14} /> {sec.title} <span style={{ fontWeight: 400, color: 'var(--text-sub)' }}>({sec.items.length})</span>
                   </div>
                   {sec.items.map((item, i) => (
                     <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
@@ -138,7 +204,9 @@ function SummaryModal({ onClose }: { onClose: () => void }) {
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 13 }}>{item.text}</div>
                         {item.author && (
-                          <div style={{ fontSize: 11, color: 'var(--text-sub)', marginTop: 2 }}>👤 {item.author}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-sub)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <User size={11} /> {item.author}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -149,8 +217,8 @@ function SummaryModal({ onClose }: { onClose: () => void }) {
 
             {!summary.aiNarrative && !Object.values(summary.sections).some((s) => s.items.length) && (
               <div className="empty-state">
-                <div className="empty-icon">📭</div>
-                No content yet — add sticky notes to the canvas to generate a brief.
+                <Inbox className="empty-icon-svg" />
+                No content yet - add sticky notes to the canvas to generate a brief.
               </div>
             )}
           </div>
@@ -160,12 +228,9 @@ function SummaryModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-interface JoinInfo { name: string; role: Role; color: string; userId: string }
-
-// ── Join Dialog ──────────────────────────────────────────────────────────────
 function JoinDialog({ onJoin }: { onJoin: (i: JoinInfo) => void }) {
-  const [name, setName]   = useState('');
-  const [role, setRole]   = useState<Role>('Contributor');
+  const [name, setName] = useState('');
+  const [role, setRole] = useState<Role>('Contributor');
   const [color, setColor] = useState(SWATCHES[0]!);
   const [loading, setLoading] = useState(false);
 
@@ -190,9 +255,14 @@ function JoinDialog({ onJoin }: { onJoin: (i: JoinInfo) => void }) {
 
         <div className="field">
           <label>Your name</label>
-          <input className="inp" placeholder="e.g. Alice" value={name}
+          <input
+            className="inp"
+            placeholder="e.g. Alice"
+            value={name}
             onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && join()} autoFocus />
+            onKeyDown={(e) => e.key === 'Enter' && join()}
+            autoFocus
+          />
         </div>
 
         <div className="field">
@@ -200,7 +270,10 @@ function JoinDialog({ onJoin }: { onJoin: (i: JoinInfo) => void }) {
           <div className="role-row">
             {(['Lead', 'Contributor', 'Viewer'] as Role[]).map((r) => (
               <div key={r} className={`role-opt${role === r ? ' sel' : ''}`} onClick={() => setRole(r)}>
-                {{ Lead: '👑', Contributor: '✏️', Viewer: '👁' }[r]} {r}
+                {r === 'Lead' && <Crown size={14} />}
+                {r === 'Contributor' && <PencilLine size={14} />}
+                {r === 'Viewer' && <Eye size={14} />}
+                {r}
               </div>
             ))}
           </div>
@@ -210,14 +283,18 @@ function JoinDialog({ onJoin }: { onJoin: (i: JoinInfo) => void }) {
           <label>Colour</label>
           <div className="color-row">
             {SWATCHES.map((c) => (
-              <div key={c} className={`swatch${color === c ? ' sel' : ''}`}
-                style={{ background: c }} onClick={() => setColor(c)} />
+              <div
+                key={c}
+                className={`swatch${color === c ? ' sel' : ''}`}
+                style={{ background: c }}
+                onClick={() => setColor(c)}
+              />
             ))}
           </div>
         </div>
 
         <button className="btn-join" disabled={!name.trim() || loading} onClick={join}>
-          {loading ? 'Joining…' : 'Join Session →'}
+          {loading ? 'Joining...' : <><span>Join Session</span><ArrowRight size={16} /></>}
         </button>
 
         <div style={{ marginTop: 14, fontSize: 11, color: 'var(--text-sub)', textAlign: 'center' }}>
@@ -228,31 +305,24 @@ function JoinDialog({ onJoin }: { onJoin: (i: JoinInfo) => void }) {
   );
 }
 
-// ── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [joinInfo, setJoinInfo] = useState<JoinInfo | null>(null);
-  const [client, setClient]     = useState<OTClient | null>(null);
-
-  const [nodes,    setNodes]    = useState(new Map<string, CanvasNode>());
-  const [status,   setStatus]   = useState<'connecting'|'connected'|'disconnected'>('disconnected');
+  const [client, setClient] = useState<OTClient | null>(null);
+  const [nodes, setNodes] = useState(new Map<string, CanvasNode>());
+  const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
   const [revision, setRevision] = useState(0);
-
-  const [tasks,   setTasks]   = useState<Task[]>([]);
-  const [events,  setEvents]  = useState<EventRow[]>([]);
-
-  const [replaySeq,   setReplaySeq]   = useState<number | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [events, setEvents] = useState<EventRow[]>([]);
+  const [replaySeq, setReplaySeq] = useState<number | null>(null);
   const [replayNodes, setReplayNodes] = useState<Map<string, CanvasNode> | null>(null);
-
-  const [denial,   setDenial]   = useState<string | null>(null);
-  const [sideTab,  setSideTab]  = useState<'tasks'|'events'|'users'>('tasks');
+  const [denial, setDenial] = useState<string | null>(null);
+  const [sideTab, setSideTab] = useState<'tasks' | 'events' | 'users'>('tasks');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
-
   const denialTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Heatmap data: count edits per node ───────────────────────────────────
   const heatmap: HeatmapData = useMemo(() => {
     const map = new Map<string, number>();
     for (const ev of events) {
@@ -263,7 +333,6 @@ export default function App() {
     return map;
   }, [events]);
 
-  // ── Join handler ─────────────────────────────────────────────────────────
   const handleJoin = useCallback((info: JoinInfo) => {
     setJoinInfo(info);
 
@@ -291,12 +360,10 @@ export default function App() {
 
     c.connect();
     setClient(c);
-
     api.tasks.list(DEFAULT_SESSION).then(setTasks).catch(() => {});
     api.events.list(DEFAULT_SESSION).then(setEvents).catch(() => {});
   }, []);
 
-  // ── Periodically refresh events/tasks ────────────────────────────────────
   useEffect(() => {
     if (!joinInfo) return;
     const id = setInterval(() => {
@@ -306,40 +373,50 @@ export default function App() {
     return () => clearInterval(id);
   }, [joinInfo]);
 
-  // ── Time-travel replay ────────────────────────────────────────────────────
   const handleSeek = useCallback(async (seq: number | null) => {
-    if (seq === null) { setReplaySeq(null); setReplayNodes(null); return; }
+    if (seq === null) {
+      setReplaySeq(null);
+      setReplayNodes(null);
+      return;
+    }
     setReplaySeq(seq);
     try {
       const { events: evs } = await api.replay.get(DEFAULT_SESSION, seq);
       const map = new Map<string, CanvasNode>();
       for (const ev of evs) {
         const p = (ev.payload ?? {}) as any;
-        if (ev.event_type === 'add_node' && ev.node_id)
-          map.set(ev.node_id, { id: ev.node_id, kind: p.kind ?? 'sticky', x: p.x ?? 0, y: p.y ?? 0, w: p.w ?? 200, h: p.h ?? 120, color: p.color ?? '#5b6af7', text: p.text ?? '', ...p });
-        else if (ev.event_type === 'update_node' && ev.node_id) {
+        if (ev.event_type === 'add_node' && ev.node_id) {
+          map.set(ev.node_id, {
+            id: ev.node_id,
+            kind: p.kind ?? 'sticky',
+            x: p.x ?? 0,
+            y: p.y ?? 0,
+            w: p.w ?? 200,
+            h: p.h ?? 120,
+            color: p.color ?? '#5b6af7',
+            text: p.text ?? '',
+            ...p,
+          });
+        } else if (ev.event_type === 'update_node' && ev.node_id) {
           const n = map.get(ev.node_id);
           if (n) map.set(ev.node_id, { ...n, ...p });
-        } else if (ev.event_type === 'delete_node' && ev.node_id)
+        } else if (ev.event_type === 'delete_node' && ev.node_id) {
           map.delete(ev.node_id);
-        else if (ev.event_type === 'lock_node' && ev.node_id) {
+        } else if (ev.event_type === 'lock_node' && ev.node_id) {
           const n = map.get(ev.node_id);
           if (n) map.set(ev.node_id, { ...n, lockedToRole: p.lockedToRole ?? null });
         }
       }
       setReplayNodes(map);
-    } catch { /* ignore */ }
+    } catch {
+      // Replay is non-destructive; keep the live state if reconstruction fails.
+    }
   }, []);
 
-  // ── Node focus from task board ────────────────────────────────────────────
   const handleNodeFocus = useCallback((nodeId: string) => {
     setFocusNodeId(nodeId);
-    // Clear after Canvas consumes it
     setTimeout(() => setFocusNodeId(null), 500);
   }, []);
-
-  // ── Pending op count ──────────────────────────────────────────────────────
-  const pendingCount = 0; // Would wire into OTClient if we expose it
 
   if (!joinInfo || !client) return <JoinDialog onJoin={handleJoin} />;
 
@@ -347,14 +424,12 @@ export default function App() {
 
   return (
     <div className="app">
-      {/* ── Header ── */}
       <header className="header">
         <span className="header-logo">LIGMA</span>
         <div className="header-divider" />
         <span className="header-session">Main Brainstorm</span>
         <div className="header-spacer" />
 
-        {/* AI Summary Export */}
         <button
           className="tool-btn"
           title="Export AI Session Brief"
@@ -364,7 +439,6 @@ export default function App() {
           <FileText size={18} />
         </button>
 
-        {/* Heatmap toggle */}
         <button
           className="tool-btn"
           title={showHeatmap ? 'Hide heatmap' : 'Show presence heatmap'}
@@ -376,20 +450,18 @@ export default function App() {
 
         <div className="header-pill">
           <div className={`status-dot ${status}`} />
-          {status === 'connected' ? 'Live' : status === 'connecting' ? 'Connecting…' : 'Offline'}
+          {status === 'connected' ? 'Live' : status === 'connecting' ? 'Connecting...' : 'Offline'}
         </div>
         <div className="header-rev">rev {revision}</div>
-        <div className="header-pill" style={{ gap: 6 }}>
+        <div className="header-pill user-pill" style={{ gap: 6 }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: joinInfo.color }} />
           <strong>{joinInfo.name}</strong>
-          <span style={{ opacity: .5 }}>·</span>
+          <span style={{ opacity: .5 }}>-</span>
           <span style={{ color: 'var(--text-sub)' }}>{joinInfo.role}</span>
         </div>
       </header>
 
-      {/* ── Body ── */}
       <div className="app-body">
-        {/* Canvas */}
         <Canvas
           client={client}
           nodes={nodes}
@@ -400,119 +472,102 @@ export default function App() {
           showHeatmap={showHeatmap}
         />
 
-        {/* Sidebar */}
         <button
-          className="sidebar-toggle"
+          className={`sidebar-toggle${isSidebarCollapsed ? ' collapsed' : ''}`}
           onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-          style={{
-            position: 'absolute',
-            right: isSidebarCollapsed ? 12 : 276,
-            top: 64,
-            zIndex: 100,
-            transition: 'right 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
-          }}
+          aria-label={isSidebarCollapsed ? 'Open sidebar' : 'Collapse sidebar'}
         >
           {isSidebarCollapsed ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
         </button>
 
-        <AnimatePresence>
-          {!isSidebarCollapsed && (
-            <motion.aside
-              className="sidebar"
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 288, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            >
-              <div className="sidebar-tabs">
-                {(['tasks','events','users'] as const).map((t) => (
-                  <button key={t} className={`sidebar-tab${sideTab === t ? ' active' : ''}`}
-                    onClick={() => setSideTab(t)}
-                    title={t.charAt(0).toUpperCase() + t.slice(1)}>
-                    {t === 'tasks' && <Brain size={16} />}
-                    {t === 'events' && <ClipboardList size={16} />}
-                    {t === 'users' && <Users size={16} />}
-                  </button>
-                ))}
-              </div>
-              <div className="sidebar-body">
-                {sideTab === 'tasks' && (
-                  <TaskBoard tasks={tasks} onNodeFocus={handleNodeFocus} />
-                )}
-                {sideTab === 'events' && (
-                  <EventLog events={events} />
-                )}
-                {sideTab === 'users' && (
-                  <div className="user-list">
-                    <div className="sidebar-section-title">In this session</div>
-                    <div className="user-row">
-                      <div className="user-avatar" style={{ background: joinInfo.color }}>
-                        {joinInfo.name[0]?.toUpperCase()}
-                      </div>
-                      <span className="user-name">{joinInfo.name}
-                        <span style={{ fontSize: 10, color: 'var(--text-sub)', marginLeft: 4 }}>(you)</span>
-                      </span>
-                      <span className={`role-chip ${joinInfo.role}`}>{joinInfo.role}</span>
-                    </div>
-                    {connectedPeers.map((p: any) => (
-                      <div key={p.userId} className="user-row">
-                        <div className="user-avatar" style={{ background: p.color }}>
-                          {(p.userName?.[0] ?? '?').toUpperCase()}
-                        </div>
-                        <span className="user-name">{p.userName}</span>
-                      </div>
-                    ))}
-
-                    {/* OT engine panel */}
-                    <div style={{ marginTop: 20, padding: '12px', background: 'var(--surface2)', borderRadius: 10, border: '1px solid var(--border)' }}>
-                      <div style={{ fontSize: 11, color: 'var(--text-sub)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Activity size={12} /> OT Engine
-                      </div>
-                      {[
-                        ['Algorithm', 'OT + Field-level Merge'],
-                        ['Revision', `#${revision}`],
-                        ['Concurrency', 'Optimistic'],
-                        ['Conflict', 'Field-level merge'],
-                        ['Broadcast', 'Delta ops only'],
-                        ['Events', `${events.length}`],
-                      ].map(([k, v]) => (
-                        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
-                          <span style={{ color: 'var(--text-sub)' }}>{k}</span>
-                          <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{v}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Heatmap toggle */}
-                    <button
-                      onClick={() => setShowHeatmap((v) => !v)}
-                      style={{
-                        marginTop: 12, width: '100%', padding: '8px',
-                        background: showHeatmap ? 'rgba(249,115,22,.1)' : 'var(--surface2)',
-                        border: `1px solid ${showHeatmap ? '#f97316' : 'var(--border)'}`,
-                        borderRadius: 8, color: showHeatmap ? '#f97316' : 'var(--text-dim)',
-                        cursor: 'pointer', fontWeight: 600, fontSize: 12,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
-                      }}
-                    >
-                      <Flame size={14} /> {showHeatmap ? 'Hide' : 'Show'} Heatmap
-                    </button>
+        <aside className={`sidebar${isSidebarCollapsed ? ' collapsed' : ''}`} aria-hidden={isSidebarCollapsed}>
+          <div className="sidebar-tabs">
+            {(['tasks', 'events', 'users'] as const).map((t) => (
+              <button
+                key={t}
+                className={`sidebar-tab${sideTab === t ? ' active' : ''}`}
+                onClick={() => setSideTab(t)}
+                title={t.charAt(0).toUpperCase() + t.slice(1)}
+              >
+                {t === 'tasks' && <Brain size={16} />}
+                {t === 'events' && <ClipboardList size={16} />}
+                {t === 'users' && <Users size={16} />}
+              </button>
+            ))}
+          </div>
+          <div className="sidebar-body">
+            {sideTab === 'tasks' && <TaskBoard tasks={tasks} onNodeFocus={handleNodeFocus} />}
+            {sideTab === 'events' && <EventLog events={events} />}
+            {sideTab === 'users' && (
+              <div className="user-list">
+                <div className="sidebar-section-title">In this session</div>
+                <div className="user-row">
+                  <div className="user-avatar" style={{ background: joinInfo.color }}>
+                    {joinInfo.name[0]?.toUpperCase()}
                   </div>
-                )}
+                  <span className="user-name">{joinInfo.name}
+                    <span style={{ fontSize: 10, color: 'var(--text-sub)', marginLeft: 4 }}>(you)</span>
+                  </span>
+                  <span className={`role-chip ${joinInfo.role}`}>{joinInfo.role}</span>
+                </div>
+                {connectedPeers.map((p: any) => (
+                  <div key={p.userId} className="user-row">
+                    <div className="user-avatar" style={{ background: p.color }}>
+                      {(p.userName?.[0] ?? '?').toUpperCase()}
+                    </div>
+                    <span className="user-name">{p.userName}</span>
+                  </div>
+                ))}
+
+                <div style={{ marginTop: 20, padding: '12px', background: 'var(--surface2)', borderRadius: 10, border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-sub)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Activity size={12} /> OT Engine
+                  </div>
+                  {[
+                    ['Algorithm', 'OT + Field-level Merge'],
+                    ['Revision', `#${revision}`],
+                    ['Concurrency', 'Optimistic'],
+                    ['Conflict', 'Field-level merge'],
+                    ['Broadcast', 'Delta ops only'],
+                    ['Events', `${events.length}`],
+                  ].map(([k, v]) => (
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
+                      <span style={{ color: 'var(--text-sub)' }}>{k}</span>
+                      <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => setShowHeatmap((v) => !v)}
+                  style={{
+                    marginTop: 12,
+                    width: '100%',
+                    padding: '8px',
+                    background: showHeatmap ? 'rgba(249,115,22,.1)' : 'var(--surface2)',
+                    border: `1px solid ${showHeatmap ? '#f97316' : 'var(--border)'}`,
+                    borderRadius: 8,
+                    color: showHeatmap ? '#f97316' : 'var(--text-dim)',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontSize: 12,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <Flame size={14} /> {showHeatmap ? 'Hide' : 'Show'} Heatmap
+                </button>
               </div>
-            </motion.aside>
-          )}
-        </AnimatePresence>
+            )}
+          </div>
+        </aside>
       </div>
 
-      {/* Replay bar */}
       <ReplayBar events={events} replaySeq={replaySeq} onSeek={handleSeek} />
-
-      {/* Summary modal */}
       {showSummary && <SummaryModal onClose={() => setShowSummary(false)} />}
-
-      {/* Denial toast */}
-      {denial && <div className="denial-toast">⛔ {denial}</div>}
+      {denial && <div className="denial-toast"><Ban size={16} /> {denial}</div>}
     </div>
   );
 }

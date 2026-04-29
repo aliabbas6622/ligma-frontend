@@ -14,6 +14,14 @@ if (Number.isNaN(port) || port <= 0) {
 const rawBasePath = process.env.BASE_PATH ?? '/';
 
 const basePath = rawBasePath.startsWith('/') ? rawBasePath : `/${rawBasePath}`;
+const apiTarget = process.env.VITE_API_URL?.trim()
+  ? (/^https?:\/\//i.test(process.env.VITE_API_URL)
+      ? process.env.VITE_API_URL
+      : /^(localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d+)?$/i.test(process.env.VITE_API_URL)
+        ? `http://${process.env.VITE_API_URL}`
+        : `https://${process.env.VITE_API_URL}`)
+  : 'http://127.0.0.1:18083';
+const wsTarget = apiTarget.replace(/^http/i, 'ws');
 
 export default defineConfig({
   base: basePath,
@@ -40,8 +48,8 @@ export default defineConfig({
     allowedHosts: true,
     fs: { strict: true },
     proxy: {
-      "/api": { target: "http://localhost:8080", changeOrigin: true },
-      "/ws": { target: "ws://localhost:8080", ws: true, changeOrigin: true },
+      "/api": { target: apiTarget, changeOrigin: true },
+      "/ws": { target: wsTarget, ws: true, changeOrigin: true },
     },
   },
   preview: {

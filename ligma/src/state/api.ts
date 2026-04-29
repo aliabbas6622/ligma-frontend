@@ -1,44 +1,77 @@
-import axios from 'axios';
+import axios, { type AxiosRequestConfig } from 'axios';
 import type { Session, User, Role, Task, EventRow } from './types';
 
-const BASE = '/api';
+const rawApiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
+
+function normalizeApiOrigin(value?: string): string {
+  if (!value) return '';
+  const trimmed = value.replace(/\/$/, '');
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^(localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d+)?$/i.test(trimmed)) {
+    return `http://${trimmed}`;
+  }
+  return `https://${trimmed}`;
+}
+
+const apiOrigin = normalizeApiOrigin(rawApiUrl);
+const BASE = apiOrigin ? `${apiOrigin}/api` : '/api';
+const LOCAL_FALLBACK_BASE =
+  typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)
+    ? 'http://127.0.0.1:18083/api'
+    : '';
+
+async function requestWithFallback<T>(config: AxiosRequestConfig): Promise<T> {
+  try {
+    const response = await axios.request<T>(config);
+    return response.data;
+  } catch (error) {
+    if (!LOCAL_FALLBACK_BASE) throw error;
+    const url = String(config.url ?? '');
+    if (!url.startsWith('/api/') || url.startsWith(LOCAL_FALLBACK_BASE)) throw error;
+    const fallbackResponse = await axios.request<T>({
+      ...config,
+      url: `${LOCAL_FALLBACK_BASE}${url.slice('/api'.length)}`,
+    });
+    return fallbackResponse.data;
+  }
+}
 
 export const api = {
   sessions: {
-    list: () => axios.get<Session[]>(`${BASE}/sessions`).then((r) => r.data),
-    create: (name: string) => axios.post<Session>(`${BASE}/sessions`, { name }).then((r) => r.data),
+    list: () => requestWithFallback<Session[]>({ method: 'GET', url: `${BASE}/sessions` }),
+    create: (name: string) => requestWithFallback<Session>({ method: 'POST', url: `${BASE}/sessions`, data: { name } }),
   },
 
   users: {
-    list: () => axios.get<User[]>(`${BASE}/users`).then((r) => r.data),
+    list: () => requestWithFallback<User[]>({ method: 'GET', url: `${BASE}/users` }),
     create: (name: string, role: Role, color: string) =>
-      axios.post<User>(`${BASE}/users`, { name, role, color }).then((r) => r.data),
+      requestWithFallback<User>({ method: 'POST', url: `${BASE}/users`, data: { name, role, color } }),
     updateRole: (id: string, role: Role) =>
-      axios.patch<User>(`${BASE}/users/${id}`, { role }).then((r) => r.data),
+      requestWithFallback<User>({ method: 'PATCH', url: `${BASE}/users/${id}`, data: { role } }),
   },
 
   tasks: {
     list: (sessionId: string) =>
-      axios.get<Task[]>(`${BASE}/tasks/${sessionId}`).then((r) => r.data),
+      requestWithFallback<Task[]>({ method: 'GET', url: `${BASE}/tasks/${sessionId}` }),
   },
 
   events: {
     list: (sessionId: string) =>
-      axios.get<EventRow[]>(`${BASE}/events/${sessionId}`).then((r) => r.data),
+      requestWithFallback<EventRow[]>({ method: 'GET', url: `${BASE}/events/${sessionId}` }),
   },
 
   replay: {
     get: (sessionId: string, seq: number) =>
-      axios.get<{ events: EventRow[] }>(`${BASE}/replay/${sessionId}?seq=${seq}`).then((r) => r.data),
+      requestWithFallback<{ events: EventRow[] }>({ method: 'GET', url: `${BASE}/replay/${sessionId}?seq=${seq}` }),
   },
 
   classify: {
     text: (text: string) =>
-      axios.post(`${BASE}/classify`, { text }).then((r) => r.data),
+      requestWithFallback({ method: 'POST', url: `${BASE}/classify`, data: { text } }),
   },
 
   summary: {
     get: (sessionId: string) =>
-      axios.get(`${BASE}/summary/${sessionId}`).then((r) => r.data),
+      requestWithFallback({ method: 'GET', url: `${BASE}/summary/${sessionId}` }),
   },
 };
