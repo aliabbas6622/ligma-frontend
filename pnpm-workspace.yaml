@@ -1,0 +1,16 @@
+packages:
+  - "ligma"
+  - "api-client-react"
+
+catalog:
+  react: ^19.1.0
+  react-dom: ^19.1.0
+  tailwindcss: ^4.1.14
+  "@tailwindcss/vite": ^4.1.14
+  vite: ^7.3.2
+  wouter: ^3.3.5
+  lucide-react: ^0.545.0
+  framer-motion: ^12.23.24
+  zod: ^3.25.76
+
+autoInstallPeers: false
